@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  # 1. 内部信箱：Redis
+  redis:
+    image: redis:latest
+    container_name: tnp_redis
+    ports:
+      - "6379:6379"
+    restart: always
+
+  # 2. 前台接待：FastAPI
+  api:
+    build: .
+    container_name: tnp_api
+    command: uvicorn main:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    depends_on:
+      - redis
+    volumes:
+      - ./uploads:/app/uploads
+      - ./results:/app/results
+    restart: always
+
+  # 3. 后台苦力：Celery Worker
+  worker:
+    build: .
+    container_name: tnp_worker
+    command: celery -A worker worker --loglevel=info
+    depends_on:
+      - redis
+    volumes:
+      - ./uploads:/app/uploads
+      - ./results:/app/results
+    # 覆盖 worker.py 里写死的 localhost，让它连接 Docker 里的 redis 服务名
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    restart: always
